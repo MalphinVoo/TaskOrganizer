@@ -2,6 +2,7 @@ import streamlit as st
 import sqlite3
 import pandas as pd
 from datetime import datetime
+import time
 
 # --- DATABASE SETUP ---
 def init_db():
@@ -45,10 +46,16 @@ tabs = st.tabs(["➕ Record New Task", "🔄 Update Task (Follow-Up)", "📊 Rep
 # --- TAB 1: RECORD NEW TASK ---
 with tabs[0]:
     st.header("Create a New Task")
+    
+    # 1. Generate the Auto-ID based on current live time
+    now_ts = datetime.now()
+    generated_task_id = now_ts.strftime("%Y%m%d_%H%M%S")
+    
     with st.form("task_form", clear_on_submit=True):
         col1, col2 = st.columns(2)
         with col1:
-            task_id = st.text_input("Task ID *").strip()
+            # Displaying it as a disabled/read-only field so users can see it, but can't alter it
+            st.text_input("Generated Task ID (Auto)", value=generated_task_id, disabled=True)
             instructed_by = st.text_input("Instructed By *")
             task_assigned_to = st.text_input("Task Assigned To *")
             school = st.selectbox("School", ["SRV", "SMV", "VIS", "Dormitory", "other"])
@@ -66,20 +73,26 @@ with tabs[0]:
         submit_task = st.form_submit_button("Save Task")
         
         if submit_task:
-            if not task_id or not description or not instructed_by or not task_assigned_to or not entered_by or (school == "other" and not other_description):
+            if not description or not instructed_by or not task_assigned_to or not entered_by or (school == "other" and not other_description):
                 st.error("Please fill in all required (*) fields.")
             else:
                 conn = get_db_connection()
                 c = conn.cursor()
                 try:
-                    now = datetime.now()
+                    # Final double check to ensure timestamps map nicely to the structural attributes
+                    date_str = now_ts.strftime("%Y-%m-%d")
+                    time_str = now_ts.strftime("%H:%M:%S")
+                    
                     c.execute('''INSERT INTO Task VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
-                              (task_id, now.strftime("%Y-%m-%d"), now.strftime("%H:%M:%S"), 
-                               description, instructed_by, task_assigned_to, school, other_description, additional_note, completed, entered_by))
+                              (generated_task_id, date_str, time_str, description, 
+                               instructed_by, task_assigned_to, school, other_description, additional_note, completed, entered_by))
                     conn.commit()
-                    st.success(f"Task {task_id} successfully saved!")
+                    st.success(f"Task {generated_task_id} successfully saved!")
+                    # Brief pause and rerun to refresh the auto-generated timestamp for the next entry
+                    time.sleep(1)
+                    st.rerun()
                 except sqlite3.IntegrityError:
-                    st.error(f"Error: Task ID '{task_id}' already exists.")
+                    st.error("System collision error. Please wait a second and submit again.")
                 finally:
                     conn.close()
 
@@ -93,6 +106,7 @@ with tabs[1]:
     if tasks_df.empty:
         st.warning("No tasks available. Please create a task first.")
     else:
+        # User simply chooses from the auto-generated timestamp IDs
         task_options = tasks_df['task_id'].tolist()
         selected_task_id = st.selectbox("Select Task ID to Update", task_options)
         
@@ -131,18 +145,13 @@ with tabs[2]:
     if tasks.empty:
         st.info("No records to report.")
     else:
-        # --- NEW RETRIEVAL / FILTER SECTIONS ---
         col_f1, col_f2 = st.columns(2)
-        
         with col_f1:
             filter_type = st.radio("1. Filter Report By Time:", ["All Records", "Date", "Month", "Year"], horizontal=True)
-            
         with col_f2:
-            # Dynamically extract all unique names assigned to tasks for the filter dropdown
             unique_assignees = ["All Persons"] + sorted(tasks['task_assigned_to'].dropna().unique().tolist())
             selected_assignee = st.selectbox("2. Retrieve By Assigned Person:", unique_assignees)
 
-        # Apply Time Filtering First
         tasks['datetime_obj'] = pd.to_datetime(tasks['date_recorded'])
         if filter_type == "Date":
             target_date = st.date_input("Select Date", datetime.now())
@@ -157,14 +166,11 @@ with tabs[2]:
         else:
             filtered_tasks = tasks.copy()
             
-        # Apply Assigned Person Filtering Second
         if selected_assignee != "All Persons":
             filtered_tasks = filtered_tasks[filtered_tasks['task_assigned_to'] == selected_assignee]
             
-        # Clean up helper column
         filtered_tasks = filtered_tasks.drop(columns=['datetime_obj'])
         
-        # Display Results
         st.subheader(f"Primary Tasks Summary ({selected_assignee})")
         st.dataframe(filtered_tasks, use_container_width=True)
         
