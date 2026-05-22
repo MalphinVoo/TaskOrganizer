@@ -37,9 +37,24 @@ init_db()
 def get_db_connection():
     return sqlite3.connect("task_management.db")
 
-# --- APP UI ---
-st.set_page_config(page_title="Task & Follow-Up Manager", layout="wide")
-st.title("📋 Task & Follow-Up Management System")
+# --- APP BRANDING CONFIG ---
+LOGO_URL = "https://twuvisionschool.edu.my/wp-content/uploads/2021/04/vision-school-logo.png"
+FAVICON_URL = "https://twuvisionschool.edu.my/wp-content/uploads/2021/04/cropped-vision-school-logo-32x32.png"
+
+st.set_page_config(
+    page_title="Task & Follow-Up Manager - Vision School", 
+    page_icon=FAVICON_URL, # Dynamic Favicon URL injection
+    layout="wide"
+)
+
+# --- HEADER WITH LOGO ---
+col_logo, col_title = st.columns([1, 4])
+with col_logo:
+    # Displays the school logo image
+    st.image(LOGO_URL, width=180, fallback="🏫")
+with col_title:
+    st.markdown("<h1 style='margin-top: 10px;'>Task & Follow-Up Management System</h1>", unsafe_allow_html=True)
+st.markdown("---")
 
 tabs = st.tabs(["➕ Record New Task", "🔄 Update Task (Follow-Up)", "📊 Reports & Preview"])
 
@@ -47,14 +62,12 @@ tabs = st.tabs(["➕ Record New Task", "🔄 Update Task (Follow-Up)", "📊 Rep
 with tabs[0]:
     st.header("Create a New Task")
     
-    # 1. Generate the Auto-ID based on current live time
     now_ts = datetime.now()
     generated_task_id = now_ts.strftime("%Y%m%d_%H%M%S")
     
     with st.form("task_form", clear_on_submit=True):
         col1, col2 = st.columns(2)
         with col1:
-            # Displaying it as a disabled/read-only field so users can see it, but can't alter it
             st.text_input("Generated Task ID (Auto)", value=generated_task_id, disabled=True)
             instructed_by = st.text_input("Instructed By *")
             task_assigned_to = st.text_input("Task Assigned To *")
@@ -79,7 +92,6 @@ with tabs[0]:
                 conn = get_db_connection()
                 c = conn.cursor()
                 try:
-                    # Final double check to ensure timestamps map nicely to the structural attributes
                     date_str = now_ts.strftime("%Y-%m-%d")
                     time_str = now_ts.strftime("%H:%M:%S")
                     
@@ -88,7 +100,6 @@ with tabs[0]:
                                instructed_by, task_assigned_to, school, other_description, additional_note, completed, entered_by))
                     conn.commit()
                     st.success(f"Task {generated_task_id} successfully saved!")
-                    # Brief pause and rerun to refresh the auto-generated timestamp for the next entry
                     time.sleep(1)
                     st.rerun()
                 except sqlite3.IntegrityError:
@@ -106,7 +117,6 @@ with tabs[1]:
     if tasks_df.empty:
         st.warning("No tasks available. Please create a task first.")
     else:
-        # User simply chooses from the auto-generated timestamp IDs
         task_options = tasks_df['task_id'].tolist()
         selected_task_id = st.selectbox("Select Task ID to Update", task_options)
         
@@ -182,3 +192,12 @@ with tabs[2]:
             st.dataframe(filtered_fu, use_container_width=True)
         else:
             st.caption("No follow-up actions found matching the filters above.")
+
+# --- COPYRIGHT FOOTER ---
+st.markdown("---")
+footer_html = f"""
+<div style='text-align: center; color: gray; padding: 10px;'>
+    <p>© {datetime.now().year} Malphin Voo. All rights reserved.</p>
+</div>
+"""
+st.markdown(footer_html, unsafe_allow_html=True)
