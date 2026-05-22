@@ -43,15 +43,20 @@ FAVICON_URL = "https://twuvisionschool.edu.my/wp-content/uploads/2021/04/cropped
 
 st.set_page_config(
     page_title="Task & Follow-Up Manager - Vision School", 
-    page_icon=FAVICON_URL, # Dynamic Favicon URL injection
+    page_icon=FAVICON_URL, 
     layout="wide"
 )
 
-# --- HEADER WITH LOGO ---
+# --- HEADER WITH LOGO (FIXED) ---
 col_logo, col_title = st.columns([1, 4])
 with col_logo:
-    # Displays the school logo image
-    st.image(LOGO_URL, width=180, fallback="🏫")
+    try:
+        # Removed the unexpected 'fallback' keyword argument
+        st.image(LOGO_URL, width=180)
+    except Exception:
+        # Backup display if the website host blocks Streamlit Cloud from reading the image url
+        st.title("🏫")
+
 with col_title:
     st.markdown("<h1 style='margin-top: 10px;'>Task & Follow-Up Management System</h1>", unsafe_allow_html=True)
 st.markdown("---")
@@ -188,16 +193,4 @@ with tabs[2]:
         visible_task_ids = filtered_tasks['task_id'].tolist()
         filtered_fu = followups[followups['task_id'].isin(visible_task_ids)]
         
-        if not filtered_fu.empty:
-            st.dataframe(filtered_fu, use_container_width=True)
-        else:
-            st.caption("No follow-up actions found matching the filters above.")
-
-# --- COPYRIGHT FOOTER ---
-st.markdown("---")
-footer_html = f"""
-<div style='text-align: center; color: gray; padding: 10px;'>
-    <p>© {datetime.now().year} Malphin Voo. All rights reserved.</p>
-</div>
-"""
-st.markdown(footer_html, unsafe_allow_html=True)
+        if not filtered_fu.
