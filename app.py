@@ -7,7 +7,6 @@ from datetime import datetime
 def init_db():
     conn = sqlite3.connect("task_management.db")
     c = conn.cursor()
-    # Create Task Table (with added task_assigned_to column)
     c.execute('''CREATE TABLE IF NOT EXISTS Task (
                     task_id TEXT PRIMARY KEY,
                     date_recorded TEXT,
@@ -20,7 +19,6 @@ def init_db():
                     additional_note TEXT,
                     completed TEXT DEFAULT 'No',
                     entered_by TEXT)''')
-    # Create Follow-Up Table
     c.execute('''CREATE TABLE IF NOT EXISTS FollowUp (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     task_id TEXT,
@@ -47,16 +45,14 @@ tabs = st.tabs(["➕ Record New Task", "🔄 Update Task (Follow-Up)", "📊 Rep
 # --- TAB 1: RECORD NEW TASK ---
 with tabs[0]:
     st.header("Create a New Task")
-    
     with st.form("task_form", clear_on_submit=True):
         col1, col2 = st.columns(2)
         with col1:
             task_id = st.text_input("Task ID *").strip()
             instructed_by = st.text_input("Instructed By *")
-            task_assigned_to = st.text_input("Task Assigned To *") # New Field Added Here
+            task_assigned_to = st.text_input("Task Assigned To *")
             school = st.selectbox("School", ["SRV", "SMV", "VIS", "Dormitory", "other"])
             
-            # Conditional input for 'other'
             other_description = ""
             if school == "other":
                 other_description = st.text_input("Please specify 'Other' school *")
@@ -67,7 +63,6 @@ with tabs[0]:
             additional_note = st.text_area("Additional Note / Remark")
             
         description = st.text_area("Task / Description *")
-        
         submit_task = st.form_submit_button("Save Task")
         
         if submit_task:
@@ -78,21 +73,19 @@ with tabs[0]:
                 c = conn.cursor()
                 try:
                     now = datetime.now()
-                    # Updated SQL Query to insert 11 values instead of 10
                     c.execute('''INSERT INTO Task VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
                               (task_id, now.strftime("%Y-%m-%d"), now.strftime("%H:%M:%S"), 
                                description, instructed_by, task_assigned_to, school, other_description, additional_note, completed, entered_by))
                     conn.commit()
                     st.success(f"Task {task_id} successfully saved!")
                 except sqlite3.IntegrityError:
-                    st.error(f"Error: Task ID '{task_id}' already exists. Use the Follow-Up tab to update it.")
+                    st.error(f"Error: Task ID '{task_id}' already exists.")
                 finally:
                     conn.close()
 
 # --- TAB 2: FOLLOW-UP ---
 with tabs[1]:
     st.header("Log a Task Follow-Up")
-    
     conn = get_db_connection()
     tasks_df = pd.read_sql_query("SELECT task_id, description FROM Task", conn)
     conn.close()
@@ -117,23 +110,18 @@ with tabs[1]:
                     conn = get_db_connection()
                     c = conn.cursor()
                     now = datetime.now()
-                    
                     c.execute('''INSERT INTO FollowUp (task_id, date_recorded, time_recorded, description, mark_as_completed, entered_by) 
                                  VALUES (?, ?, ?, ?, ?, ?)''',
                               (selected_task_id, now.strftime("%Y-%m-%d"), now.strftime("%H:%M:%S"), fu_description, fu_completed, fu_entered_by))
-                    
                     if fu_completed == "Yes":
                         c.execute("UPDATE Task SET completed = 'Yes' WHERE task_id = ?", (selected_task_id,))
-                        
                     conn.commit()
                     conn.close()
                     st.success(f"Follow-up logged for Task {selected_task_id}!")
 
 # --- TAB 3: REPORTS & PREVIEW ---
 with tabs[2]:
-    st.header("Generate Reports")
-    
-    filter_type = st.radio("Filter Report By:", ["Date", "Month", "Year", "All Records"], horizontal=True)
+    st.header("Generate & Retrieve Reports")
     
     conn = get_db_connection()
     tasks = pd.read_sql_query("SELECT * FROM Task", conn)
@@ -143,8 +131,19 @@ with tabs[2]:
     if tasks.empty:
         st.info("No records to report.")
     else:
-        tasks['datetime_obj'] = pd.to_datetime(tasks['date_recorded'])
+        # --- NEW RETRIEVAL / FILTER SECTIONS ---
+        col_f1, col_f2 = st.columns(2)
         
+        with col_f1:
+            filter_type = st.radio("1. Filter Report By Time:", ["All Records", "Date", "Month", "Year"], horizontal=True)
+            
+        with col_f2:
+            # Dynamically extract all unique names assigned to tasks for the filter dropdown
+            unique_assignees = ["All Persons"] + sorted(tasks['task_assigned_to'].dropna().unique().tolist())
+            selected_assignee = st.selectbox("2. Retrieve By Assigned Person:", unique_assignees)
+
+        # Apply Time Filtering First
+        tasks['datetime_obj'] = pd.to_datetime(tasks['date_recorded'])
         if filter_type == "Date":
             target_date = st.date_input("Select Date", datetime.now())
             filtered_tasks = tasks[tasks['datetime_obj'].dt.date == target_date]
@@ -158,9 +157,15 @@ with tabs[2]:
         else:
             filtered_tasks = tasks.copy()
             
+        # Apply Assigned Person Filtering Second
+        if selected_assignee != "All Persons":
+            filtered_tasks = filtered_tasks[filtered_tasks['task_assigned_to'] == selected_assignee]
+            
+        # Clean up helper column
         filtered_tasks = filtered_tasks.drop(columns=['datetime_obj'])
         
-        st.subheader("Primary Tasks")
+        # Display Results
+        st.subheader(f"Primary Tasks Summary ({selected_assignee})")
         st.dataframe(filtered_tasks, use_container_width=True)
         
         st.subheader("Associated Follow-Up History")
@@ -170,4 +175,4 @@ with tabs[2]:
         if not filtered_fu.empty:
             st.dataframe(filtered_fu, use_container_width=True)
         else:
-            st.caption("No follow-up actions recorded for the filtered tasks.")
+            st.caption("No follow-up actions found matching the filters above.")
