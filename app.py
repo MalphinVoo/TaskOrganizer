@@ -7,13 +7,14 @@ from datetime import datetime
 def init_db():
     conn = sqlite3.connect("task_management.db")
     c = conn.cursor()
-    # Create Task Table
+    # Create Task Table (with added task_assigned_to column)
     c.execute('''CREATE TABLE IF NOT EXISTS Task (
                     task_id TEXT PRIMARY KEY,
                     date_recorded TEXT,
                     time_recorded TEXT,
                     description TEXT,
                     instructed_by TEXT,
+                    task_assigned_to TEXT,
                     school TEXT,
                     other_description TEXT,
                     additional_note TEXT,
@@ -52,7 +53,9 @@ with tabs[0]:
         with col1:
             task_id = st.text_input("Task ID *").strip()
             instructed_by = st.text_input("Instructed By *")
+            task_assigned_to = st.text_input("Task Assigned To *") # New Field Added Here
             school = st.selectbox("School", ["SRV", "SMV", "VIS", "Dormitory", "other"])
+            
             # Conditional input for 'other'
             other_description = ""
             if school == "other":
@@ -68,16 +71,17 @@ with tabs[0]:
         submit_task = st.form_submit_button("Save Task")
         
         if submit_task:
-            if not task_id or not description or not instructed_by or not entered_by or (school == "other" and not other_description):
+            if not task_id or not description or not instructed_by or not task_assigned_to or not entered_by or (school == "other" and not other_description):
                 st.error("Please fill in all required (*) fields.")
             else:
                 conn = get_db_connection()
                 c = conn.cursor()
                 try:
                     now = datetime.now()
-                    c.execute('''INSERT INTO Task VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+                    # Updated SQL Query to insert 11 values instead of 10
+                    c.execute('''INSERT INTO Task VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
                               (task_id, now.strftime("%Y-%m-%d"), now.strftime("%H:%M:%S"), 
-                               description, instructed_by, school, other_description, additional_note, completed, entered_by))
+                               description, instructed_by, task_assigned_to, school, other_description, additional_note, completed, entered_by))
                     conn.commit()
                     st.success(f"Task {task_id} successfully saved!")
                 except sqlite3.IntegrityError:
@@ -96,7 +100,6 @@ with tabs[1]:
     if tasks_df.empty:
         st.warning("No tasks available. Please create a task first.")
     else:
-        # Create a dropdown labeled with ID and snippet of description
         task_options = tasks_df['task_id'].tolist()
         selected_task_id = st.selectbox("Select Task ID to Update", task_options)
         
@@ -115,12 +118,10 @@ with tabs[1]:
                     c = conn.cursor()
                     now = datetime.now()
                     
-                    # Insert into Follow-Up Table
                     c.execute('''INSERT INTO FollowUp (task_id, date_recorded, time_recorded, description, mark_as_completed, entered_by) 
                                  VALUES (?, ?, ?, ?, ?, ?)''',
                               (selected_task_id, now.strftime("%Y-%m-%d"), now.strftime("%H:%M:%S"), fu_description, fu_completed, fu_entered_by))
                     
-                    # If marked as completed in follow-up, optionally update the main Task status
                     if fu_completed == "Yes":
                         c.execute("UPDATE Task SET completed = 'Yes' WHERE task_id = ?", (selected_task_id,))
                         
@@ -135,7 +136,6 @@ with tabs[2]:
     filter_type = st.radio("Filter Report By:", ["Date", "Month", "Year", "All Records"], horizontal=True)
     
     conn = get_db_connection()
-    # Read fresh data
     tasks = pd.read_sql_query("SELECT * FROM Task", conn)
     followups = pd.read_sql_query("SELECT * FROM FollowUp", conn)
     conn.close()
@@ -143,7 +143,6 @@ with tabs[2]:
     if tasks.empty:
         st.info("No records to report.")
     else:
-        # Convert date string to datetime object for accurate filtering
         tasks['datetime_obj'] = pd.to_datetime(tasks['date_recorded'])
         
         if filter_type == "Date":
@@ -159,14 +158,12 @@ with tabs[2]:
         else:
             filtered_tasks = tasks.copy()
             
-        # Drop the helper datetime column before displaying
         filtered_tasks = filtered_tasks.drop(columns=['datetime_obj'])
         
         st.subheader("Primary Tasks")
         st.dataframe(filtered_tasks, use_container_width=True)
         
         st.subheader("Associated Follow-Up History")
-        # Filter follow ups belonging to the visible tasks
         visible_task_ids = filtered_tasks['task_id'].tolist()
         filtered_fu = followups[followups['task_id'].isin(visible_task_ids)]
         
