@@ -147,4 +147,47 @@ with tabs[2]:
     else:
         col_f1, col_f2 = st.columns(2)
         with col_f1:
-            filter_type = st.radio("1. Filter Report By Time:",
+            filter_type = st.radio("1. Filter Report By Time:", ["All Records", "Date", "Month", "Year"], horizontal=True)
+        with col_f2:
+            unique_assignees = ["All Persons"] + sorted(tasks['task_assigned_to'].dropna().unique().tolist())
+            selected_assignee = st.selectbox("2. Retrieve By Assigned Person:", unique_assignees)
+
+        tasks['datetime_obj'] = pd.to_datetime(tasks['date_recorded'])
+        if filter_type == "Date":
+            target_date = st.date_input("Select Date", datetime.now())
+            filtered_tasks = tasks[tasks['datetime_obj'].dt.date == target_date]
+        elif filter_type == "Month":
+            current_year = datetime.now().year
+            target_month = st.slider("Select Month", 1, 12, int(datetime.now().month))
+            filtered_tasks = tasks[(tasks['datetime_obj'].dt.month == target_month) & (tasks['datetime_obj'].dt.year == current_year)]
+        elif filter_type == "Year":
+            target_year = st.number_input("Select Year", min_value=2020, max_value=2030, value=int(datetime.now().year))
+            filtered_tasks = tasks[tasks['datetime_obj'].dt.year == target_year]
+        else:
+            filtered_tasks = tasks.copy()
+            
+        if selected_assignee != "All Persons":
+            filtered_tasks = filtered_tasks[filtered_tasks['task_assigned_to'] == selected_assignee]
+            
+        filtered_tasks = filtered_tasks.drop(columns=['datetime_obj'])
+        
+        st.subheader(f"Primary Tasks Summary ({selected_assignee})")
+        st.dataframe(filtered_tasks, use_container_width=True)
+        
+        st.subheader("Associated Follow-Up History")
+        visible_task_ids = filtered_tasks['task_id'].tolist()
+        filtered_fu = followups[followups['task_id'].isin(visible_task_ids)]
+        
+        if not filtered_fu.empty:
+            st.dataframe(filtered_fu, use_container_width=True)
+        else:
+            st.caption("No follow-up actions found matching the filters above.")
+
+# --- COPYRIGHT FOOTER ---
+st.markdown("---")
+footer_html = f"""
+<div style='text-align: center; color: gray; padding: 10px;'>
+    <p>© {datetime.now().year} Malphin Voo. All rights reserved.</p>
+</div>
+"""
+st.markdown(footer_html, unsafe_allow_html=True)
